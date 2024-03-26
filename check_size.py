@@ -115,6 +115,7 @@ class SizeChecker:
             >>> checker.check("M, K", b(a)) # check passed
             >>> checker.check("4, K", b(a)) # check failed
             AssertionError: expected shape (4, 7) but got (3, 7)
+            >>> checker.check("*, K", b(a)) # wildcard, check passed
         
         """
         assert hasattr(tensor, "shape"), "input tensor has no attribute 'shape'"
@@ -122,6 +123,9 @@ class SizeChecker:
                                       asserted_size.strip().rstrip(",").rstrip())
         asserted_shape = []
         for size in asserted_shape_str:
+            if size == "*":
+                asserted_shape.append(size)
+                continue
             try:
                 asserted_shape.append(int(size))
             except ValueError:
@@ -131,5 +135,42 @@ class SizeChecker:
                     raise ValueError(f"Unknown size string '{size}'")
         asserted_shape = tuple(asserted_shape)
         real_shape = tuple(tensor.shape)
-        assert asserted_shape == real_shape, f"expected shape {asserted_shape} but got {real_shape}"
+        assert equals(asserted_shape, real_shape), f"expected shape {asserted_shape} but got {real_shape}"
+
+
+# Decorator, use @CheckSize(True) or @CheckSize(False) to decorate a class
+# then one can use "self.checker"
+class CheckSize:
+    def __init__(self, enable: bool = True):
+        self.enable = enable
+    
+    def __call__(self, cls):
+        init = cls.__init__
+
+        def __init__(__self__, *args, **kwargs):
+            __self__.checker = SizeChecker()
+            if self.enable:
+                __self__.checker.enable()
+            else:
+                __self__.checker.disable()
+            init(__self__, *args, **kwargs)
+        
+        cls.__init__ = __init__
+
+        return cls
+
+def equals(tuple1, tuple2) -> bool:
+    """
+    Allow wildcards.
+    """
+    if len(tuple1) != len(tuple2):
+        return False
+    
+    for (e1, e2) in zip(tuple1, tuple2):
+        if e1 == "*" or e2 == "*":
+            continue
+        if e1 != e2:
+            return False
+    
+    return True
 
